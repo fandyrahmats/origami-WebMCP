@@ -36,7 +36,7 @@ The Day 1 verifier exercises the pure fold engine and the same handler used by t
 - Vite `8.2.2`
 - TypeScript `7.0.2`
 
-All package versions are pinned exactly.
+All package versions are pinned exactly. TypeScript 7 compiled the Day 1 checkpoint successfully, so no 5.x fallback was used.
 
 ## License
 

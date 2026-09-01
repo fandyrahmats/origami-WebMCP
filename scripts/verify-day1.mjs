@@ -32,6 +32,7 @@ const movingFacet = result.sheet.facets.find(
 assert.ok(movingFacet);
 assert.equal(result.sheet.foldCount, 1);
 assert.equal(sheet.foldCount, 0, "the input sheet must remain immutable");
+assert.equal(result.fold.angleRadians, Math.PI);
 assert.ok(Math.abs(movingFacet.vertices[2].x + 0.5) < 1e-10);
 assert.ok(Math.abs(movingFacet.vertices[2].z - 0.5) < 1e-10);
 
@@ -62,6 +63,10 @@ assert.equal(threeImportCount, 0);
 console.log("PASS sheet facets: 2");
 console.log("PASS hardcoded creases: 1");
 console.log("PASS fold count after transition: 1");
+console.log(`PASS fold rotation radians: ${result.fold.angleRadians.toFixed(6)}`);
+console.log(
+  `PASS moving vertex target: (${movingFacet.vertices[2].x.toFixed(3)}, ${movingFacet.vertices[2].y.toFixed(3)}, ${movingFacet.vertices[2].z.toFixed(3)})`,
+);
 console.log("PASS repeated fold rejected: true");
 console.log(`PASS handler fold count: ${handler.getSheet().foldCount}`);
 console.log(`PASS handler applied callbacks: ${appliedCallbacks}`);
