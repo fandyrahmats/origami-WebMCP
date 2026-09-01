@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# Origami Studio — ignore rules
+# <NAMA> — ignore rules
 #
 # Tracked on purpose: package-lock.json so a judge cloning the repository gets
 # the exact dependency tree that was tested, plus LICENSE, README.md, and
@@ -28,6 +28,7 @@
 
 # Test output
 /coverage
+/.verify-dist
 
 # This project needs no environment variables. If one of these ever appears,
 # something has gone wrong in the design: there is no server and no account.
