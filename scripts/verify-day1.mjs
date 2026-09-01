@@ -9,6 +9,7 @@ import {
   DIAGONAL_CREASE_ID,
   MOVING_FACET_ID,
 } from "../.verify-dist/src/engine/sheet.js";
+import { createFoldHandler } from "../.verify-dist/src/interaction/foldHandler.js";
 
 const sheet = createSquareSheet();
 assert.equal(sheet.facets.length, 2);
@@ -40,6 +41,15 @@ const repeated = foldSingleDiagonal(result.sheet, {
 });
 assert.equal(repeated.ok, false);
 
+let appliedCallbacks = 0;
+const handler = createFoldHandler(createSquareSheet(), () => {
+  appliedCallbacks += 1;
+});
+const handled = handler.handleCrease(DIAGONAL_CREASE_ID);
+assert.equal(handled.ok, true);
+assert.equal(handler.getSheet().foldCount, 1);
+assert.equal(appliedCallbacks, 1);
+
 const engineDirectory = fileURLToPath(new URL("../src/engine/", import.meta.url));
 const engineFiles = await readdir(engineDirectory);
 let threeImportCount = 0;
@@ -53,4 +63,6 @@ console.log("PASS sheet facets: 2");
 console.log("PASS hardcoded creases: 1");
 console.log("PASS fold count after transition: 1");
 console.log("PASS repeated fold rejected: true");
+console.log(`PASS handler fold count: ${handler.getSheet().foldCount}`);
+console.log(`PASS handler applied callbacks: ${appliedCallbacks}`);
 console.log(`PASS engine Three.js imports: ${threeImportCount}`);

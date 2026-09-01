@@ -7,5 +7,5 @@
     "outDir": ".verify-dist",
     "rootDir": "."
   },
-  "include": ["src/engine/**/*.ts"]
+  "include": ["src/engine/**/*.ts", "src/interaction/**/*.ts"]
 }
