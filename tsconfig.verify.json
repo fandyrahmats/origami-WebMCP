@@ -7,5 +7,24 @@
     "outDir": ".verify-dist",
     "rootDir": "."
   },
-  "include": ["src/engine/**/*.ts", "src/interaction/**/*.ts"]
+  "include": [
+    "src/engine/**/*.ts",
+    "src/lib/dom.ts",
+    "src/lib/format.ts",
+    "src/scene/animate.ts",
+    "src/scene/creasePicker.ts",
+    "src/scene/framing.ts",
+    "src/scene/paperGeometry.ts",
+    "src/scene/presentation.ts",
+    "src/scene/sheetMesh.ts",
+    "src/store.ts",
+    "src/ui/console.ts",
+    "src/ui/controls.ts",
+    "src/ui/marquee.ts",
+    "src/ui/panel.ts",
+    "src/webmcp/client.ts",
+    "src/webmcp/runtime.ts",
+    "src/webmcp/contracts/**/*.ts",
+    "src/webmcp/handlers/**/*.ts"
+  ]
 }

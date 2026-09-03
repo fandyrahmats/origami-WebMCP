@@ -1,6 +1,29 @@
+/* Dark only. Both typefaces are bundled locally; the app makes no font CDN request. */
 :root {
+  /* Stage */
+  --bg: #080814;
+  --bg-raised: #0b0b19;
+  --panel: #22213c;
+  --panel-2: #25243a;
+  --line: #38364c;
+
+  /* Type */
+  --text: #ddd9eb;
+  --text-dim: #c2bed0;
+  --text-faint: #aaa7b9;
+
+  /* Neon. Green means the agent and success; pink means the person and refusal. */
+  --neon-pink: #ff496c;
+  --neon-green: #39ed82;
+  --paper: #f7f1df;
+  --accent-deep: #292259;
+
+  --font-display: "Archivo Black", system-ui, -apple-system, sans-serif;
+  --font-mono: "Space Mono", ui-monospace, "Cascadia Mono", monospace;
+
+  --edge: 5px;
+
   color-scheme: dark;
-  background: #080814;
 }
 
 * {
@@ -13,24 +36,608 @@ body,
   width: 100%;
   height: 100%;
   margin: 0;
-  overflow: hidden;
 }
 
 body {
-  background: #080814;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  overflow: hidden;
 }
 
 #app {
   position: relative;
   background:
-    radial-gradient(circle at 50% 45%, rgb(41 34 89 / 42%), transparent 42%),
-    #080814;
+    radial-gradient(circle at 50% 46%, rgb(41 34 89 / 55%), transparent 46%),
+    var(--bg);
 }
 
+/* The canvas is full-bleed and sits behind every readout. */
 .stage-canvas {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
+  touch-action: none;
+  cursor: grab;
+}
+
+/* Set by the picker, so the cursor answers "is this clickable" before the click. */
+.stage-canvas[data-over-crease="yes"] {
   cursor: pointer;
-  touch-action: manipulation;
+}
+
+.stage-canvas:focus-visible {
+  outline: 2px solid var(--neon-green);
+  outline-offset: -4px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Panels read as equipment: square-ish corners, hairline border, translucent. */
+.marquee,
+.console,
+.signal,
+.controls {
+  position: absolute;
+  z-index: 2;
+  border: 1px solid var(--line);
+  border-radius: var(--edge);
+  background: rgb(11 11 25 / 78%);
+  backdrop-filter: blur(6px);
+}
+
+.micro {
+  display: block;
+  color: var(--text-faint);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+/* Marquee -------------------------------------------------------------- */
+
+.marquee {
+  top: 18px;
+  left: 18px;
+  padding: 14px 18px 16px;
+}
+
+.marquee-lines {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 10px;
+  font-family: var(--font-display);
+  font-size: clamp(24px, 3.4vw, 40px);
+  font-weight: 900;
+  line-height: 0.98;
+  letter-spacing: -0.02em;
+}
+
+.badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--text-faint);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+}
+
+.badge[data-live="yes"] {
+  border-color: var(--neon-green);
+  color: var(--neon-green);
+}
+
+.badge[data-status="degraded"],
+.badge[data-status="error"] {
+  border-color: var(--neon-pink);
+  color: var(--neon-pink);
+}
+
+/* Fold signal ---------------------------------------------------------- */
+
+.signal {
+  top: 18px;
+  right: 18px;
+  z-index: 4;
+  padding: 12px 14px;
+}
+
+.counters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(52px, 1fr));
+  gap: 10px;
+}
+
+.counter-value {
+  display: block;
+  margin-top: 2px;
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.counter[data-warn="yes"] .counter-value {
+  color: var(--neon-pink);
+}
+
+.model-picker {
+  position: relative;
+  margin-top: 10px;
+}
+
+.model-summary {
+  display: grid;
+  grid-template-columns: auto 24px minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+  min-height: 30px;
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--panel);
+  cursor: pointer;
+  list-style: none;
+}
+
+.model-summary::-webkit-details-marker {
+  display: none;
+}
+
+.model-summary:hover,
+.model-picker[open] .model-summary {
+  border-color: var(--neon-green);
+}
+
+.model-summary:focus-visible {
+  outline: 2px solid var(--neon-green);
+  outline-offset: 2px;
+}
+
+.model-summary-glyph {
+  color: var(--neon-green);
+  text-align: center;
+}
+
+.model-summary-name {
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-summary-steps {
+  color: var(--text-faint);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.model-tray {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: min(248px, calc(100vw - 24px));
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: rgb(11 11 25 / 96%);
+  box-shadow: 0 14px 36px rgb(0 0 0 / 38%);
+}
+
+.model-group + .model-group {
+  margin-top: 9px;
+}
+
+.model-group-label {
+  font-size: 9px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.chip {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--panel);
+  color: var(--text-dim);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chip:hover,
+.chip[data-active="yes"] {
+  border-color: var(--neon-green);
+  background: var(--accent-deep);
+  color: var(--neon-green);
+}
+
+/* Agent console -------------------------------------------------------- */
+
+.console {
+  top: 132px;
+  right: 18px;
+  display: flex;
+  flex-direction: column;
+  width: min(330px, 34vw);
+  max-height: min(46vh, 380px);
+  padding: 10px 12px 12px;
+}
+
+.console-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.console-uri {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.console-live {
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--text-faint);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+}
+
+.console-live[data-live="yes"] {
+  border-color: var(--neon-green);
+  color: var(--neon-green);
+}
+
+.console-live[data-status="degraded"],
+.console-live[data-status="error"] {
+  border-color: var(--neon-pink);
+  color: var(--neon-pink);
+}
+
+.console-count {
+  padding: 8px 0 6px;
+  color: var(--text-faint);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+
+.console-stream {
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.console-row {
+  display: flex;
+  min-width: 0;
+  gap: 6px;
+  padding: 3px 0;
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.console-mark {
+  flex: 0 0 10px;
+  color: var(--text-faint);
+}
+
+.console-tool {
+  flex: 0 0 auto;
+}
+
+/* Green is the agent, pink is the person. The mapping never varies. */
+.console-row[data-origin="agent"] .console-tool {
+  color: var(--neon-green);
+}
+
+.console-row[data-origin="person"] .console-tool {
+  color: var(--neon-pink);
+}
+
+.console-row[data-ok="no"] .console-tool {
+  text-decoration: line-through;
+}
+
+.console-note {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.console-state {
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+/* Fold control --------------------------------------------------------- */
+
+/* Sits directly above the fold-history strip, which is ~62px tall. */
+.controls {
+  bottom: 92px;
+  left: 18px;
+  width: min(212px, 30vw);
+  max-height: 46vh;
+  padding: 10px 12px 12px;
+  overflow-y: auto;
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0 10px;
+}
+
+.glyph {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.glyph:hover:not(:disabled) {
+  border-color: var(--neon-green);
+  color: var(--neon-green);
+}
+
+.glyph:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+}
+
+.glyph-small {
+  width: 24px;
+  height: 22px;
+  font-size: 12px;
+}
+
+.glyph:focus-visible,
+.chip:focus-visible {
+  outline: 2px solid var(--neon-green);
+  outline-offset: 2px;
+}
+
+.crease-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.crease-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 4px;
+  align-items: center;
+}
+
+.crease-id {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.crease-empty {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+/* Fold history --------------------------------------------------------- */
+
+.timeline {
+  position: absolute;
+  bottom: 18px;
+  left: 18px;
+  z-index: 2;
+  width: min(212px, 30vw);
+  padding: 8px 12px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--edge);
+  background: rgb(11 11 25 / 78%);
+  backdrop-filter: blur(6px);
+}
+
+.timeline-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.timeline-count {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* One cell per fold, in the order they happened. Same colour mapping as the
+   console, so the two readouts agree at a glance. */
+.ribbon {
+  display: flex;
+  gap: 1px;
+  height: 6px;
+  margin: 7px 0 4px;
+}
+
+.ribbon-cell {
+  flex: 1;
+  border-radius: 1px;
+  background: var(--line);
+}
+
+.ribbon-cell[data-origin="agent"][data-applied="yes"] {
+  background: var(--neon-green);
+}
+
+.ribbon-cell[data-origin="person"][data-applied="yes"] {
+  background: var(--neon-pink);
+}
+
+.timeline[data-empty="yes"] .ribbon {
+  background: var(--line);
+  opacity: 0.4;
+}
+
+.scrub {
+  width: 100%;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--neon-green);
+  background: transparent;
+  cursor: ew-resize;
+}
+
+.scrub:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.scrub:focus-visible {
+  outline: 2px solid var(--neon-green);
+  outline-offset: 2px;
+}
+
+/* Hint ----------------------------------------------------------------- */
+
+.hint {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  z-index: 2;
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 12px;
+  text-align: center;
+  transform: translateX(-50%);
+}
+
+.hint[data-tone="refused"] {
+  color: var(--neon-pink);
+}
+
+/* Pink is the person's own pointer, green is the crease an agent marked. The
+   ghost in the scene uses the same two colours, so the pair reads as one cue. */
+.hint[data-tone="preview"] {
+  color: var(--neon-pink);
+}
+
+.hint[data-tone="agent"] {
+  color: var(--neon-green);
+}
+
+.hint[data-tone="preview"],
+.hint[data-tone="agent"],
+.hint[data-tone="refused"] {
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: rgb(11 11 25 / 82%);
+}
+
+/* The crease row is a hover target now, so it needs to look like one. */
+.crease-row {
+  padding: 1px 3px;
+  border-radius: 3px;
+}
+
+.crease-row:hover {
+  background: var(--panel);
+}
+
+/* Responsive ----------------------------------------------------------- */
+
+@media (width <= 860px) {
+  .marquee-lines {
+    flex-direction: row;
+    gap: 8px;
+    font-size: 22px;
+  }
+
+  /* The console collapses to a single strip and everything stacks upward from
+     the hint, so the sheet keeps at least half the viewport. */
+  .console {
+    top: auto;
+    right: 12px;
+    bottom: 100px;
+    left: 12px;
+    width: auto;
+    max-height: 118px;
+  }
+
+  .timeline {
+    right: 12px;
+    bottom: 28px;
+    left: 12px;
+    width: auto;
+  }
+
+  .hint {
+    bottom: 7px;
+    font-size: 11px;
+  }
+
+  .signal {
+    top: 12px;
+    right: 12px;
+    padding: 8px 10px;
+  }
+
+  .counters {
+    grid-template-columns: repeat(4, minmax(40px, 1fr));
+    gap: 7px;
+  }
+
+  .marquee {
+    top: 12px;
+    left: 12px;
+  }
+
+  /* The sheet never shrinks below half the viewport height. */
+  .controls {
+    top: 96px;
+    bottom: auto;
+    left: 12px;
+    max-height: 26vh;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .console-stream {
+    scroll-behavior: auto;
+  }
 }

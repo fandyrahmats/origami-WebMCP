@@ -1,51 +1,28 @@
-import { DIAGONAL_CREASE_ID, MOVING_FACET_ID } from "./sheet.js";
+import { creasePlans, legalCreases, planFor } from "./creases.js";
+import type { CreasePlan } from "./creases.js";
+import { reflectPoint } from "./geometry.js";
+import {
+  MAX_LAYERS,
+  createSquareSheet,
+  flipSheet,
+  layerCount,
+  normaliseLayers,
+} from "./sheet.js";
+import { foldTopology } from "./topology.js";
+import type { FacetFragment } from "./topology.js";
 import type {
+  CreaseType,
   Facet,
   FoldEngine,
+  FoldPreview,
   FoldRequest,
   FoldResult,
-  Point3,
+  MovingPiece,
+  Point2,
   Sheet,
 } from "./types.js";
 
-const rotateAroundAxis = (
-  point: Point3,
-  start: Point3,
-  end: Point3,
-  angle: number,
-): Point3 => {
-  const axisX = end.x - start.x;
-  const axisY = end.y - start.y;
-  const axisZ = end.z - start.z;
-  const axisLength = Math.hypot(axisX, axisY, axisZ);
-  const unitX = axisX / axisLength;
-  const unitY = axisY / axisLength;
-  const unitZ = axisZ / axisLength;
-  const x = point.x - start.x;
-  const y = point.y - start.y;
-  const z = point.z - start.z;
-  const cosine = Math.cos(angle);
-  const sine = Math.sin(angle);
-  const dot = unitX * x + unitY * y + unitZ * z;
-
-  return {
-    x:
-      start.x +
-      x * cosine +
-      (unitY * z - unitZ * y) * sine +
-      unitX * dot * (1 - cosine),
-    y:
-      start.y +
-      y * cosine +
-      (unitZ * x - unitX * z) * sine +
-      unitY * dot * (1 - cosine),
-    z:
-      start.z +
-      z * cosine +
-      (unitX * y - unitY * x) * sine +
-      unitZ * dot * (1 - cosine),
-  };
-};
+const FOLD_TYPES: readonly CreaseType[] = ["valley", "mountain"];
 
 const reject = (sheet: Sheet, reason: string): FoldResult => ({
   ok: false,
@@ -53,63 +30,205 @@ const reject = (sheet: Sheet, reason: string): FoldResult => ({
   reason,
 });
 
-const rotateFacet = (
-  facet: Facet,
-  axisStart: Point3,
-  axisEnd: Point3,
-  angleRadians: number,
-): Facet => ({
-  ...facet,
-  layer: 1,
-  vertices: [
-    rotateAroundAxis(facet.vertices[0], axisStart, axisEnd, angleRadians),
-    rotateAroundAxis(facet.vertices[1], axisStart, axisEnd, angleRadians),
-    rotateAroundAxis(facet.vertices[2], axisStart, axisEnd, angleRadians),
-  ],
-});
+/** Valley places the flap above; mountain tucks it below. */
+const restack = (
+  layer: number,
+  highest: number,
+  type: CreaseType,
+): number =>
+  type === "valley" ? 2 * highest + 1 - layer : -1 - layer;
 
-export const foldSingleDiagonal = (
+const movingFragments = (
   sheet: Sheet,
-  request: FoldRequest,
-): FoldResult => {
-  if (request.creaseId !== DIAGONAL_CREASE_ID || request.type !== "valley") {
-    return reject(sheet, `Day 1 only supports ${DIAGONAL_CREASE_ID} as a valley fold.`);
-  }
+  plan: CreasePlan,
+): readonly FacetFragment[] => {
+  const topology = foldTopology(sheet, plan.line);
+  return plan.movingSign === 1
+    ? topology.positive.fragments
+    : topology.negative.fragments;
+};
 
-  if (sheet.foldedCreaseIds.includes(DIAGONAL_CREASE_ID)) {
-    return reject(sheet, `${DIAGONAL_CREASE_ID} is already folded.`);
-  }
+/**
+ * Answer "which part folds, and where does it go" without changing anything.
+ * Only material-connected fragments reachable from the crease are shown.
+ */
+export const previewFold = (
+  sheet: Sheet,
+  creaseId: string,
+): FoldPreview | null => {
+  const plan = planFor(sheet, creaseId);
+  if (!plan) return null;
 
-  const crease = sheet.creases[0];
-  if (!crease) {
-    return reject(sheet, "The hardcoded Day 1 crease is missing.");
-  }
+  const fragments = movingFragments(sheet, plan);
+  const from: MovingPiece[] = [];
+  const to: MovingPiece[] = [];
 
-  const angleRadians = Math.PI;
-  const facets = sheet.facets.map<Facet>((facet) =>
-    facet.id === MOVING_FACET_ID
-      ? rotateFacet(facet, crease.start, crease.end, angleRadians)
-      : facet,
-  );
+  for (const fragment of fragments) {
+    from.push({
+      polygon: fragment.polygon,
+      layer: fragment.facet.layer,
+      faceUp: fragment.facet.faceUp,
+    });
+    to.push({
+      polygon: fragment.polygon.map((vertex) =>
+        reflectPoint(vertex, plan.line),
+      ),
+      layer: fragment.facet.layer,
+      faceUp: !fragment.facet.faceUp,
+    });
+  }
 
   return {
+    creaseId: plan.crease.id,
+    creaseLabel: plan.crease.label,
+    movingFacets: from.length,
+    totalFacets: sheet.facets.length,
+    from,
+    to,
+  };
+};
+
+interface Division {
+  readonly staying: readonly Facet[];
+  readonly moving: readonly Facet[];
+  readonly pieces: readonly MovingPiece[];
+}
+
+/**
+ * Rebuild the complete sheet from source-aware fragments. A projected polygon
+ * on the moving half-plane stays put unless its material edges connect it back
+ * to the crease; this is what keeps an overlapped sheet from visually tearing.
+ */
+const divide = (sheet: Sheet, plan: CreasePlan, type: CreaseType): Division => {
+  const highest = sheet.facets.reduce(
+    (top, facet) => Math.max(top, facet.layer),
+    0,
+  );
+  const topology = foldTopology(sheet, plan.line);
+  const selected = new Set(
+    plan.movingSign === 1
+      ? topology.positive.fragments
+      : topology.negative.fragments,
+  );
+  const staying: Facet[] = [];
+  const moving: Facet[] = [];
+  const pieces: MovingPiece[] = [];
+  let serial = 0;
+
+  for (const fragment of topology.all) {
+    serial += 1;
+    const id = `${fragment.facet.id}-f${sheet.foldCount + 1}-${serial}`;
+
+    if (!selected.has(fragment)) {
+      staying.push({
+        ...fragment.facet,
+        id,
+        polygon: fragment.polygon,
+        materialPolygon: fragment.materialPolygon,
+      });
+      continue;
+    }
+
+    pieces.push({
+      polygon: fragment.polygon,
+      layer: fragment.facet.layer,
+      faceUp: fragment.facet.faceUp,
+    });
+    moving.push({
+      id,
+      layer: restack(fragment.facet.layer, highest, type),
+      faceUp: !fragment.facet.faceUp,
+      polygon: fragment.polygon.map<Point2>((vertex) =>
+        reflectPoint(vertex, plan.line),
+      ),
+      // Material coordinates are an identity map and never reflect.
+      materialPolygon: fragment.materialPolygon,
+    });
+  }
+
+  return { staying, moving, pieces };
+};
+
+export const foldSheet = (sheet: Sheet, request: FoldRequest): FoldResult => {
+  if (typeof request.creaseId !== "string" || request.creaseId.length === 0) {
+    return reject(sheet, "A crease id is required.");
+  }
+  if (!FOLD_TYPES.includes(request.type)) {
+    return reject(sheet, "Fold type must be valley or mountain.");
+  }
+
+  const plan = planFor(sheet, request.creaseId);
+  if (!plan) {
+    const legal = legalCreases(sheet)
+      .map((crease) => crease.id)
+      .join(", ");
+    return reject(
+      sheet,
+      `${request.creaseId} is not foldable right now. Legal creases: ${legal || "none"}.`,
+    );
+  }
+  if (layerCount(sheet) >= MAX_LAYERS) {
+    return reject(
+      sheet,
+      `The model already uses ${layerCount(sheet)} layer-order ranks, at this engine's ${MAX_LAYERS} ordering cap.`,
+    );
+  }
+
+  const { staying, moving, pieces } = divide(sheet, plan, request.type);
+  if (moving.length === 0) {
+    return reject(sheet, `${request.creaseId} has no connected flap to move.`);
+  }
+  if (staying.length === 0) {
+    return reject(
+      sheet,
+      `${request.creaseId} would move the whole sheet instead of folding it.`,
+    );
+  }
+
+  const folded = normaliseLayers({
+    ...sheet,
+    facets: [...staying, ...moving],
+    foldCount: sheet.foldCount + 1,
+    pattern: [
+      ...sheet.pattern,
+      {
+        id: plan.crease.id,
+        type: request.type,
+        start: plan.crease.start,
+        end: plan.crease.end,
+      },
+    ],
+  });
+
+  if (layerCount(folded) > MAX_LAYERS) {
+    return reject(
+      sheet,
+      `That fold would require ${layerCount(folded)} layer-order ranks, past this engine's ${MAX_LAYERS} ordering cap.`,
+    );
+  }
+
+  const direction = request.type === "valley" ? -1 : 1;
+  return {
     ok: true,
-    sheet: {
-      ...sheet,
-      facets,
-      foldCount: sheet.foldCount + 1,
-      foldedCreaseIds: [...sheet.foldedCreaseIds, DIAGONAL_CREASE_ID],
-    },
+    sheet: folded,
     fold: {
-      creaseId: crease.id,
-      movingFacetId: MOVING_FACET_ID,
-      axisStart: crease.start,
-      axisEnd: crease.end,
-      angleRadians,
+      creaseId: plan.crease.id,
+      creaseLabel: plan.crease.label,
+      type: request.type,
+      axisStart: plan.crease.start,
+      axisEnd: plan.crease.end,
+      angleRadians: direction * plan.movingSign * Math.PI,
+      movingPieces: pieces,
+      movedFacetIds: moving.map((facet) => facet.id),
     },
   };
 };
 
-export const singleDiagonalFoldEngine: FoldEngine = {
-  fold: foldSingleDiagonal,
+export const foldEngine: FoldEngine = {
+  reset: createSquareSheet,
+  legalCreases,
+  fold: foldSheet,
+  flip: flipSheet,
 };
+
+export { creasePlans, legalCreases, planFor };
